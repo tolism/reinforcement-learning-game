@@ -1,17 +1,18 @@
-import retro
-import cv2
+import gym
 import numpy as np
-
 import random
+import cv2
 import keras
 
+
 from replay_buffer import ReplayBuffer
+
 from keras.models import load_model, Sequential
 from keras.layers.convolutional import Convolution2D
 from keras.optimizers import Adam
 from keras.layers.core import Activation, Dropout, Flatten, Dense
 
-# List of hyper-parameters and constants
+# List of hyper-parameters and constants used in the deeepQ class ( Brain of the model)
 DECAY_RATE = 0.99
 BUFFER_SIZE = 40000
 MINIBATCH_SIZE = 64
@@ -22,34 +23,20 @@ FINAL_EPSILON = 0.05
 INITIAL_EPSILON = 0.1
 NUM_ACTIONS = 6
 TAU = 0.01
+
+# List of hyper-parameters and constants used in the Space Invaders class
+BUFFER_SIZE_T = 100000
+MINIBATCH_SIZE_T = 32
+TOT_FRAME_T = 1000000
+EPSILON_DECAY_T = 300000
+MIN_OBSERVATION_T = 5000
+FINAL_EPSILON_T = 0.1
+INITIAL_EPSILON_T = 1.0
+
 # Number of frames to throw into network
 NUM_FRAMES = 3
 
-# Load game's environment
-# DOWNLOAD MORE GAMES
-
-
-def init():
-    env = retro.make(game='Airstriker-Genesis')
-    # Check game's specs
-    actions = env.action_space.n
-    print(actions)
-    print(env.observation_space.shape)
-    # Q-Learning init
-    Q = np.zeros([84, 84, actions])
-    eta = .628
-    gma = .9
-    epis = 5000
-    rev_list = []  # rewards per episode calculate
-# Preprocess
-# DOWNLOAD CV2
-
-
-def preprocess(observation):
-    observation = cv2.cvtColor(cv2.resize(observation, (84, 110)), cv2.COLOR_BGR2GRAY)
-    observation = observation[26:110, :]
-    ret, observation = cv2.threshold(observation, 1, 255, cv2.THRESH_BINARY)
-    return np.reshape(observation, (84, 84, 1))
+# The brain of our game
 
 
 class DeepQ(object):
@@ -61,7 +48,8 @@ class DeepQ(object):
     def construct_q_network(self):
         # Uses the network architecture found in DeepMind paper
         self.model = Sequential()
-        self.model.add(Convolution2D(32, 8, 8, subsample=(4, 4), input_shape=(84, 84, NUM_FRAMES)))
+        self.model.add(Convolution2D(32, 8, 8, subsample=(
+            4, 4), input_shape=(84, 84, NUM_FRAMES)))
         self.model.add(Activation('relu'))
         self.model.add(Convolution2D(64, 4, 4, subsample=(2, 2)))
         self.model.add(Activation('relu'))
@@ -94,7 +82,8 @@ class DeepQ(object):
     def predict_movement(self, data, epsilon):
         """Predict movement of game controler where is epsilon
         probability randomly move."""
-        q_actions = self.model.predict(data.reshape(1, 84, 84, NUM_FRAMES), batch_size=1)
+        q_actions = self.model.predict(
+            data.reshape(1, 84, 84, NUM_FRAMES), batch_size=1)
         opt_policy = np.argmax(q_actions)
         rand_val = np.random.random()
         if rand_val < epsilon:
@@ -107,7 +96,8 @@ class DeepQ(object):
         targets = np.zeros((batch_size, NUM_ACTIONS))
 
         for i in range(batch_size):
-            targets[i] = self.model.predict(s_batch[i].reshape(1, 84, 84, NUM_FRAMES), batch_size=1)
+            targets[i] = self.model.predict(
+                s_batch[i].reshape(1, 84, 84, NUM_FRAMES), batch_size=1)
             fut_action = self.target_model.predict(
                 s2_batch[i].reshape(1, 84, 84, NUM_FRAMES), batch_size=1)
             targets[i, a_batch[i]] = r_batch[i]
@@ -133,104 +123,151 @@ class DeepQ(object):
         model_weights = self.model.get_weights()
         target_model_weights = self.target_model.get_weights()
         for i in range(len(model_weights)):
-            target_model_weights[i] = TAU * model_weights[i] + (1 - TAU) * target_model_weights[i]
+            target_model_weights[i] = TAU * model_weights[i] + \
+                (1 - TAU) * target_model_weights[i]
         self.target_model.set_weights(target_model_weights)
 
-
-def train(num_frames):
-    observation_num = 0
-    curr_state = convert_process_buffer()
-    epsilon = INITIAL_EPSILON
-    alive_frame = 0
-    total_reward = 0
-
-    while observation_num < num_frames:
-        if observation_num % 1000 == 999:
-            print(("Executing loop %d" % observation_num))
-
-        # Slowly decay the learning rate
-        if epsilon > FINAL_EPSILON:
-            epsilon -= (INITIAL_EPSILON-FINAL_EPSILON)/EPSILON_DECAY
-
-        initial_state = convert_process_buffer()
-        process_buffer = []
-
-        predict_movement, predict_q_value = deep_q.predict_movement(curr_state, epsilon)
-
-        reward, done = 0, False
-        for i in range(NUM_FRAMES):
-            temp_observation, temp_reward, temp_done, _ = env.step(predict_movement)
-            reward += temp_reward
-            process_buffer.append(temp_observation)
-            done = done | temp_done
-
-        if observation_num % 10 == 0:
-            print("We predicted a q value of ", predict_q_value)
-
-        if done:
-            print("Lived with maximum time ", alive_frame)
-            print("Earned a total of reward equal to ", total_reward)
-            env.reset()
-            alive_frame = 0
-            total_reward = 0
-
-        new_state = self.convert_process_buffer()
-        replay_buffer.add(initial_state, predict_movement, reward, done, new_state)
-        total_reward += reward
-
-        if replay_buffer.size() > MIN_OBSERVATION:
-            s_batch, a_batch, r_batch, d_batch, s2_batch = replay_buffer.sample(
-                MINIBATCH_SIZE)
-            deep_q.train(s_batch, a_batch, r_batch, d_batch, s2_batch, observation_num)
-            deep_q.target_train()
+# The class of our game
 
 
-'''
-def train(epochs=1000):
-    init_network()
-    for i in range(epochs):
-        s = env.reset()
-        # Reshape state
-        s = preprocess(s)
-        rAll = 0
-        d = False
-        j = 0
-        while j < 99:
-            env.render()
-            j += 1
-            a = np.argmax(Q[s, :] + np.random.randn(1, action_space)*(1./(i+1)))
-            # Get new state & reward from environment
-            s1, r, d, _ = env.step(a)
-            s1 = preprocess(s1)
-            # Update Q-Table with new knowledge
-            Q[s, a] = Q[s, a] + eta*(r + gma*np.max(Q[s1, :]) - Q[s, a])
-            rAll += r
-            s = s1
-            if d == True:
-                break
-        rev_list.append(rAll)
-        env.render()
-    print "Reward Sum on all episodes " + str(sum(rev_list)/epis)
-    print "Final Values Q-Table"
-    print Q
-'''
-# while True:
-#     # Keras Learning
-#
-#     # Next is BrainDQL case
-#     action = brain.getAction()
-#     actionmax = np.argmax(np.array(action))
-#
-#     nextObservation,reward, done, info = env.step(actionmax)
-#
-#     if done:
-#         nextObservation = env.reset()
-#     nextObservation = preprocess(nextObservation)
-#     brain.setPerception(nextObservation,action,reward,terminal)
+class SpaceInvader(object):
 
-env.close()
+    def __init__(self):
+        self.env = gym.make('SpaceInvaders-v0')
+        self.env.reset()
+        self.replay_buffer = ReplayBuffer(BUFFER_SIZE_T)
+
+        # Construct appropriate network
+        self.deep_q = DeepQ()
+
+        # A buffer that keeps the last 3 images
+        self.process_buffer = []
+        # Initialize buffer with the first frame
+        s1, r1, _, _ = self.env.step(0)
+        s2, r2, _, _ = self.env.step(0)
+        s3, r3, _, _ = self.env.step(0)
+        self.process_buffer = [s1, s2, s3]
+
+    def load_network(self, path):
+        self.deep_q.load_network(path)
+
+    def convert_process_buffer(self):
+        """ Basic image processing which converts the list of NUM_FRAMES images in the process buffer
+        into one training sample"""
+        black_buffer = [cv2.resize(cv2.cvtColor(x, cv2.COLOR_RGB2GRAY), (84, 90))
+                        for x in self.process_buffer]
+        black_buffer = [x[1:85, :, np.newaxis] for x in black_buffer]
+        return np.concatenate(black_buffer, axis=2)
+
+    def train(self, num_frames):
+        observation_num = 0
+        curr_state = self.convert_process_buffer()
+        epsilon = INITIAL_EPSILON
+        alive_frame = 0
+        total_reward = 0
+
+        while observation_num < num_frames:
+            if observation_num % 1000 == 999:
+                print(("Executing loop %d" % observation_num))
+
+            # Slowly decay the learning rate
+            if epsilon > FINAL_EPSILON_T:
+                epsilon -= (INITIAL_EPSILON_T - FINAL_EPSILON_T) / \
+                    EPSILON_DECAY_T
+
+            initial_state = self.convert_process_buffer()
+            self.process_buffer = []
+
+            predict_movement, predict_q_value = self.deep_q.predict_movement(
+                curr_state, epsilon)
+
+            reward, done = 0, False
+            for i in range(NUM_FRAMES):
+                temp_observation, temp_reward, temp_done, _ = self.env.step(
+                    predict_movement)
+                reward += temp_reward
+                self.process_buffer.append(temp_observation)
+                done = done | temp_done
+
+            if observation_num % 10 == 0:
+                print("We predicted a q value of ", predict_q_value)
+
+            if done:
+                print("Lived with maximum time ", alive_frame)
+                print("Earned a total of reward equal to ", total_reward)
+                self.env.reset()
+                alive_frame = 0
+                total_reward = 0
+
+            new_state = self.convert_process_buffer()
+            self.replay_buffer.add(
+                initial_state, predict_movement, reward, done, new_state)
+            total_reward += reward
+
+            if self.replay_buffer.size() > MIN_OBSERVATION_T:
+                s_batch, a_batch, r_batch, d_batch, s2_batch = self.replay_buffer.sample(
+                    MINIBATCH_SIZE_T)
+                self.deep_q.train(s_batch, a_batch, r_batch,
+                                  d_batch, s2_batch, observation_num)
+                self.deep_q.target_train()
+
+            # Save the network every 100000 iterations
+            # if observation_num % 10000 == 9999:
+            if observation_num % 10000 == 0:
+                print("Saving Network")
+                self.deep_q.save_network("saved.h5")
+
+            alive_frame += 1
+            observation_num += 1
+
+    def simulate(self, path="", save=False):
+        """Simulates game"""
+        done = False
+        tot_award = 0
+        if save:
+            self.env = gym.wrappers.Monitor(
+                self.env, directory=path, force=True, write_upon_reset=True)
+        self.env.reset()
+        self.env.render()
+        while not done:
+            state = self.convert_process_buffer()
+            predict_movement = self.deep_q.predict_movement(state, 0)[0]
+            self.env.render()
+            observation, reward, done, _ = self.env.step(predict_movement)
+            tot_award += reward
+            self.process_buffer.append(observation)
+            self.process_buffer = self.process_buffer[1:]
+        if save:
+            self.env.env.close()
+
+    def calculate_mean(self, num_samples=100):
+        reward_list = []
+        print("Printing scores of each trial")
+        for i in range(num_samples):
+            done = False
+            tot_award = 0
+            self.env.reset()
+            while not done:
+                state = self.convert_process_buffer()
+                predict_movement = self.deep_q.predict_movement(state, 0.0)[0]
+                observation, reward, done, _ = self.env.step(predict_movement)
+                tot_award += reward
+                self.process_buffer.append(observation)
+                self.process_buffer = self.process_buffer[1:]
+            print(tot_award)
+            reward_list.append(tot_award)
+        return np.mean(reward_list), np.std(reward_list)
 
 
 if __name__ == '__main__':
-    init()
-    train()
+    game_instance = SpaceInvader()
+    game_instance.train(10000)
+    stat = game_instance.calculate_mean()
+    print("Game Statistics")
+    print(stat)
+    game_instance.simulate("saved.h5", save=True)
+    game_instance.simulate()
+    # Load an already trained model and test it
+    # game_instance.load_network("saved.h5")
+    # while 1:
+    # game_instance.simulate()
