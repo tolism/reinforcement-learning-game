@@ -5,6 +5,7 @@ from collections import deque
 # sys.path.append('/usr/local/lib/python2.7/site-packages')
 import cv2
 import random
+import matplotlib.pyplot as plt
 
 from keras.models import load_model, Sequential
 from keras.layers.convolutional import Conv2D
@@ -14,10 +15,12 @@ from keras.layers.core import Activation, Dropout, Flatten, Dense
 
 # Preprocess
 def preprocess(observation):
-    observation = cv2.cvtColor(cv2.resize(observation, (84, 110)), cv2.COLOR_BGR2GRAY)
+    observation = cv2.resize(observation, (84, 110))
+    observation = cv2.cvtColor(observation, cv2.COLOR_BGR2GRAY)
     observation = observation[26:110, :]
     ret, observation = cv2.threshold(observation, 1, 255, cv2.THRESH_BINARY)
     return np.reshape(observation, (1, 84, 84, 1))
+
 
 
 # Load game's environment
@@ -28,6 +31,20 @@ actions = env.action_space.n
 # print(env.observation_space.shape)
 
 
+
+#Testing Preprocess Photo
+env.reset()
+action0 = 0  # do nothing
+observation0, reward0, terminal, info = env.step(action0)
+print("Before processing: " + str(np.array(observation0).shape))
+plt.imshow(np.array(observation0))
+plt.show()
+observation0 = preprocess(observation0)
+print("After processing: " + str(np.array(observation0).shape))
+plt.imshow(np.array(np.squeeze(observation0)))
+plt.show()
+
+
 # # SET CORRECT EPSILONS
 epsilon = 1.
 epsilon_min = 0.1
@@ -35,7 +52,10 @@ epsilon_decay = 0.1
 gamma = .9
 epochs = 5000
 batch_size = 4
+episodeNumber = 10000
+episode = 0
 memory = deque()
+test = True
 
 # Initialize neural network
 
@@ -61,8 +81,13 @@ def act(state):
     return np.argmax(act_values[0])  # returns action
 
 
+if test:
+    model=load_model('DQN.h5')
+    print('Succesfully loaded the model.')
+
 # Collect data
-for e in range(10):
+
+while episode < episodeNumber:
 
     state = env.reset()
     state = preprocess(state)
@@ -72,6 +97,8 @@ for e in range(10):
         action = act(state)
         next_state, reward, done, _ = env.step(action)
         next_state = preprocess(next_state)
+        if(len(memory)>10000):
+            memory.popleft()
         memory.append((state, action, reward, next_state, done))
         env.render()
         state = next_state
@@ -80,8 +107,11 @@ for e in range(10):
             break
     if not done:
         print('Play stoppee: ', play)
-    # Train model9
+
+    # Train model
     minibatch = random.sample(memory, batch_size)
+    #print('The length of the memory is : ' , len(memory))
+    print("Episode : " , episode)
     for state, action, reward, next_state, done in minibatch:
         target = reward
         if not done:
@@ -89,10 +119,13 @@ for e in range(10):
                 np.amax(model.predict(next_state, batch_size=1))
         target_f = model.predict(state, batch_size=1)
         target_f[0][action] = target
-        model.fit(state, target_f, epochs=1, verbose=0)
+        model.fit(state, target_f, epochs=1, verbose=2)
+
     if epsilon > epsilon_min:
         epsilon *= epsilon_decay
-
+    if(episode%100==0):
+        model.save('DQN.h5')
+        print('Model was saved.')
+    episode+=1
 
 # SAVE MODEL
-#
